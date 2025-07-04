@@ -27,12 +27,36 @@ struct Ray {
     t: f32,
 };
 
+struct OpenPBRMaterial {
+    base_color: vec3f,
+/*
+    base_color_texid: i32,
+    base_weight: f32,
+    base_roughness: f32,
+    base_metalness: f32,
+
+    specular_color: vec3f,
+    specular_weight: f32,
+    specular_roughness: f32,
+    specular_anisotropy: f32,
+    specular_rotation: f32,
+    specular_ior: f32,
+    specular_ior_level: f32,
+
+    transmission_weight: f32,
+
+    geometry_opacity: f32,
+    geometry_opacity_texid: i32,
+*/
+};
+
 struct SurfaceInteraction {
     p: vec3f,
     n: vec3f,
     w_i: vec3f,
     w_o: vec3f,
     uv: vec2f,
+    material: OpenPBRMaterial,
     valid: bool,
 };
 
@@ -53,8 +77,10 @@ struct RNG {
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage,read> vertices: array<Vertex>;
 @group(0) @binding(2) var<storage,read> indices: array<u32>;
-@group(0) @binding(3) var<storage,read> bvh: array<BVHNode>;
-@group(0) @binding(4) var dst_texture: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(3) var<storage,read> materials: array<OpenPBRMaterial>;
+@group(0) @binding(4) var<storage,read> bvh: array<BVHNode>;
+@group(0) @binding(5) var dst_texture: texture_storage_2d<rgba16float, write>;
+
 /* Data */
 
 /* Random */
@@ -167,7 +193,7 @@ fn intersectTriangle(ray: ptr<function,Ray>,
         if (t < (*ray).t) {
             let bary = vec3f(1.0 - u - v, u, v);
             let uv = getUV(first_index, bary);
-            // OpenPBRMaterial mat = materials[material_id];
+            let material: OpenPBRMaterial = materials[material_id];
             var face_normal = normalize(cross(edge1, edge2));
             var vertex_normal = getNormal(first_index, bary);
             if (dot(face_normal, -(*ray).d) < 0.0) {
@@ -180,7 +206,7 @@ fn intersectTriangle(ray: ptr<function,Ray>,
             // if (mat.base_color_texid >= 0 && texture(textures[mat.base_color_texid], uv).a < 0.001f) return false;
             (*si).uv = uv;
             (*si).n = vertex_normal;
-            // si.mat = mat;
+            (*si).material = material;
             (*ray).t = min( (*ray).t, t );
 
 
@@ -215,7 +241,8 @@ fn intersectAABB(ray: ptr<function,Ray>, bmin: vec3f, bmax: vec3f) -> f32 {
 }
 
 fn intersectBLAS(ray: ptr<function,Ray>, si: ptr<function,SurfaceInteraction>, bvh_offset: u32) {
-    var stack = array<u32, 16>();
+    /* TODO: Increasing this results in no image */
+    var stack = array<u32, 8>();
     var current: i32 = 0;
     stack[current] = bvh_offset;
 
@@ -226,7 +253,6 @@ fn intersectBLAS(ray: ptr<function,Ray>, si: ptr<function,SurfaceInteraction>, b
         if (node.left_child <= 0) {
             // intersect triangles in the node
             for (var i: u32 = 0; i < node.tri_count; i = i+1) {
-            //for (var i: u32 = 0; i < 4; i = i+1) {
                 intersectTriangle(ray, si, node.first_tri_index_id + (3*i));
             }
         } else {
@@ -255,7 +281,7 @@ fn intersectBLAS(ray: ptr<function,Ray>, si: ptr<function,SurfaceInteraction>, b
             }
         }
 
-        if (current < 0 || current >= 15) {
+        if (current < 0 || current >= 7) {
             return;
         }
     }
@@ -279,9 +305,10 @@ fn miss(ray: Ray) -> vec4f {
 }
 
 fn closestHit(si: SurfaceInteraction) -> vec4f {
-    let ambient = vec3f(0.2);
-    let diffuse = dot(vec3f(0, 1, 0), si.n) * vec3f(0.9, 0.8, 0.6);
+    let ambient = si.material.base_color * 0.1;
+    let diffuse = dot(vec3f(0, 1, 0), si.n) * si.material.base_color;
     let color = vec4f(ambient + diffuse, 1.0);
+    // let color = vec4f(1, 0, 0, 1);
 
     return color;
 }

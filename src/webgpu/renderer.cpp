@@ -110,6 +110,9 @@ WebGPURenderer::initBuffers() {
     // create indices buffer
     m_indices_buffer = std::make_unique<Buffer<uint32_t>>(m_device, total_indices, (WGPUBufferUsage)(WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst));
 
+    // create materials buffer
+    m_materials_buffer = std::make_unique<Buffer<Material>>(m_device, m_scene->getMaterials().size(), (WGPUBufferUsage)(WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst));
+
     // create bvh buffer
     m_bvh_buffer = std::make_unique<Buffer<BVHNode>>(m_device, m_bvh->getNodes().size(), (WGPUBufferUsage)(WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst));
 
@@ -136,8 +139,9 @@ WebGPURenderer::initPipeline() {
     m_pathtracing_pipeline->setBufferBinding(*m_uniforms_buffer, 0, WGPUBufferBindingType_Uniform, WGPUShaderStage_Compute);
     m_pathtracing_pipeline->setBufferBinding(*m_vertices_buffer, 1, WGPUBufferBindingType_ReadOnlyStorage, WGPUShaderStage_Compute);
     m_pathtracing_pipeline->setBufferBinding(*m_indices_buffer, 2, WGPUBufferBindingType_ReadOnlyStorage, WGPUShaderStage_Compute);
-    m_pathtracing_pipeline->setBufferBinding(*m_bvh_buffer, 3, WGPUBufferBindingType_ReadOnlyStorage, WGPUShaderStage_Compute);
-    m_pathtracing_pipeline->setStorageTextureBinding(*m_accum_texture1, 4, WGPUStorageTextureAccess_WriteOnly, WGPUShaderStage_Compute);
+    m_pathtracing_pipeline->setBufferBinding(*m_materials_buffer, 3, WGPUBufferBindingType_ReadOnlyStorage, WGPUShaderStage_Compute);
+    m_pathtracing_pipeline->setBufferBinding(*m_bvh_buffer, 4, WGPUBufferBindingType_ReadOnlyStorage, WGPUShaderStage_Compute);
+    m_pathtracing_pipeline->setStorageTextureBinding(*m_accum_texture1, 5, WGPUStorageTextureAccess_WriteOnly, WGPUShaderStage_Compute);
     m_pathtracing_pipeline->setShader(*m_pathtracing_shader, "pathtracer");
     m_pathtracing_pipeline->commit(m_device);
 
@@ -180,6 +184,17 @@ WebGPURenderer::initBufferData() {
     // upload indices
     m_indices_buffer->setData(m_device, m_queue, m_bvh->getIndices());
 
+    // upload materials
+    std::vector<Material> materials;
+    for (int i = 0; i < m_scene->getMaterials().size(); ++i) {
+        Material material;
+        material.base_color.x = m_scene->getMaterials()[i].base_color.x;
+        material.base_color.y = m_scene->getMaterials()[i].base_color.y;
+        material.base_color.z = m_scene->getMaterials()[i].base_color.z;
+        materials.push_back(material);
+    }
+    m_materials_buffer->setData(m_device, m_queue, materials);
+
     // upload bvh
     m_bvh_buffer->setData(m_device, m_queue, (BVHNode*)m_bvh->getNodes().data(), m_bvh->getNodesUsed(), 0);
 
@@ -204,11 +219,23 @@ WebGPURenderer::render(const glm::vec3 eye, const glm::vec3 dir, const glm::vec3
     m_uniforms.viewport_size.y = m_window->getHeight();
     m_uniforms_buffer->setData(m_device, m_queue, &m_uniforms, 1);
 
+    // Create command encoder
+    WGPUCommandEncoderDescriptor encoder_descriptor = {};
+    WGPUCommandEncoder command_encoder = wgpuDeviceCreateCommandEncoder(m_device, &encoder_descriptor);
+
     // Run pathtracing pass
-    renderpassPathtracer();
+    renderpassPathtracer(command_encoder);
 
     // Run postprocessing pass
-    renderpassPostprocess();
+    renderpassPostprocess(command_encoder);
+
+    // Submit work
+    WGPUCommandBuffer command_buffer = wgpuCommandEncoderFinish(command_encoder, nullptr);
+    wgpuQueueSubmit(m_queue, 1, &command_buffer);
+
+    // Clean up
+    wgpuCommandBufferRelease(command_buffer);
+    wgpuCommandEncoderRelease(command_encoder);
 
     // Present framebuffer
 #ifndef __EMSCRIPTEN__
@@ -221,11 +248,8 @@ WebGPURenderer::render(const glm::vec3 eye, const glm::vec3 dir, const glm::vec3
 
 }
 
-void WebGPURenderer::renderpassPathtracer()
+void WebGPURenderer::renderpassPathtracer(WGPUCommandEncoder command_encoder)
 {
-    // Create command encoder
-    WGPUCommandEncoderDescriptor encoder_descriptor = {};
-    WGPUCommandEncoder command_encoder = wgpuDeviceCreateCommandEncoder(m_device, &encoder_descriptor);
 
     // Create compute pass
     WGPUComputePassDescriptor computepass_descriptor = {};
@@ -242,28 +266,18 @@ void WebGPURenderer::renderpassPathtracer()
     wgpuComputePassEncoderDispatchWorkgroups(computepass_encoder, dispatch_size_x, dispatch_size_y, 1);
     wgpuComputePassEncoderEnd(computepass_encoder);
 
-    // Submit work
-    WGPUCommandBuffer command_buffer = wgpuCommandEncoderFinish(command_encoder, nullptr);
-    wgpuQueueSubmit(m_queue, 1, &command_buffer);
-
     // Clean up
     wgpuComputePassEncoderRelease(computepass_encoder);
-    wgpuCommandBufferRelease(command_buffer);
-    wgpuCommandEncoderRelease(command_encoder);
 }
 
 void
-WebGPURenderer::renderpassPostprocess() {
+WebGPURenderer::renderpassPostprocess(WGPUCommandEncoder command_encoder) {
     Texture draw_target(m_surface);
     if (!draw_target.getTextureView())
     {
         WARN("Could not get draw target from surface");
         return;
     }
-
-    // Create command encoder
-    WGPUCommandEncoderDescriptor encoder_descriptor = {};
-    WGPUCommandEncoder command_encoder = wgpuDeviceCreateCommandEncoder(m_device, &encoder_descriptor);
 
     // The attachment part of the render pass descriptor describes the target texture of the pass
 	WGPURenderPassColorAttachment color_attachment = {};
@@ -294,12 +308,6 @@ WebGPURenderer::renderpassPostprocess() {
 
 	wgpuRenderPassEncoderEnd(renderpass_encoder);
 	wgpuRenderPassEncoderRelease(renderpass_encoder);
-
-	// Encode and submit the render pass
-	WGPUCommandBuffer command = wgpuCommandEncoderFinish(command_encoder, nullptr);
-	wgpuQueueSubmit(m_queue, 1, &command);
-	wgpuCommandBufferRelease(command);
-    wgpuCommandEncoderRelease(command_encoder);
 }
 
 

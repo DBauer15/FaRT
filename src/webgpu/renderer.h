@@ -63,6 +63,8 @@ struct WebGPURenderer : Renderer {
                                         m_vertices_buffer { nullptr };
         std::unique_ptr<Buffer<uint32_t>>   
                                         m_indices_buffer  { nullptr };
+        std::unique_ptr<Buffer<Material>>   
+                                        m_materials_buffer{ nullptr };
         std::unique_ptr<BVH>            m_bvh             { nullptr };
         std::unique_ptr<Buffer<BVHNode>>
                                         m_bvh_buffer      { nullptr };
@@ -75,8 +77,8 @@ struct WebGPURenderer : Renderer {
         void initTextures();
         void initPipeline();
         void initBufferData();
-        void renderpassPathtracer();
-        void renderpassPostprocess();
+        void renderpassPathtracer(WGPUCommandEncoder command_encoder);
+        void renderpassPostprocess(WGPUCommandEncoder command_encoder);
 
 };
 

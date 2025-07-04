@@ -20,4 +20,8 @@ struct Vertex {
     alignas(16) glm::vec4 uv;
 };
 
+struct Material {
+    alignas(16) glm::vec4 base_color;
+};
+
 }
