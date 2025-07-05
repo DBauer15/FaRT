@@ -261,8 +261,8 @@ void WebGPURenderer::renderpassPathtracer(WGPUCommandEncoder command_encoder)
     wgpuComputePassEncoderSetPipeline(computepass_encoder, m_pathtracing_pipeline->getComputePipeline());
     wgpuComputePassEncoderSetBindGroup(computepass_encoder, 0, m_pathtracing_pipeline->getBindGroup(), 0, nullptr);
 
-    size_t dispatch_size_x = (m_window->getWidth() + 31) / 32;
-    size_t dispatch_size_y = (m_window->getHeight() + 31) / 32;
+    size_t dispatch_size_x = (m_window->getWidth() + 15) / 16;
+    size_t dispatch_size_y = (m_window->getHeight() + 15) / 16;
     wgpuComputePassEncoderDispatchWorkgroups(computepass_encoder, dispatch_size_x, dispatch_size_y, 1);
     wgpuComputePassEncoderEnd(computepass_encoder);
 
@@ -395,7 +395,7 @@ WebGPURenderer::requestDeviceSync(WGPUAdapter adapter)
 	required_limits.limits.maxComputeWorkgroupSizeZ = 1;
 	required_limits.limits.maxComputeInvocationsPerWorkgroup = 1024;
 	required_limits.limits.maxComputeWorkgroupsPerDimension = 192;
-    required_limits.limits.maxStorageBufferBindingSize = 50000000 * sizeof(Vertex);
+    required_limits.limits.maxStorageBufferBindingSize = 500000000 * sizeof(Vertex);
     required_limits.limits.maxBindingsPerBindGroup = 5;
     required_limits.limits.maxStorageBuffersPerShaderStage = 5;
 

@@ -242,7 +242,7 @@ fn intersectAABB(ray: ptr<function,Ray>, bmin: vec3f, bmax: vec3f) -> f32 {
 
 fn intersectBLAS(ray: ptr<function,Ray>, si: ptr<function,SurfaceInteraction>, bvh_offset: u32) {
     /* TODO: Increasing this results in no image */
-    var stack = array<u32, 8>();
+    var stack = array<u32, 16>();
     var current: i32 = 0;
     stack[current] = bvh_offset;
 
@@ -281,7 +281,7 @@ fn intersectBLAS(ray: ptr<function,Ray>, si: ptr<function,SurfaceInteraction>, b
             }
         }
 
-        if (current < 0 || current >= 7) {
+        if (current < 0 || current >= 15) {
             return;
         }
     }
@@ -325,7 +325,7 @@ fn spawnRay(uniforms: Uniforms, d: vec2f) -> Ray {
     return ray;
 }
 
-@compute @workgroup_size(32, 32)
+@compute @workgroup_size(16, 16)
 fn pathtracer(@builtin(global_invocation_id) id: vec3<u32>) {
     let pixel_id = u32(id.y * uniforms.viewport_size.x + id.x);
     var rng = make_random(pixel_id, uniforms.frame_number);
