@@ -22,6 +22,27 @@ struct Vertex {
 
 struct Material {
     alignas(16) glm::vec4 base_color;
+    alignas(16) glm::vec4 specular_color;
+
+    alignas(4) int32_t base_color_texid;
+    alignas(4) float base_weight;
+    alignas(4) float base_roughness;
+    alignas(4) float base_metalness;
+
+    alignas(4) float specular_weight;
+    alignas(4) float specular_roughness;
+    alignas(4) float specular_anisotropy;
+    alignas(4) float specular_rotation;
+
+    alignas(4) float specular_ior;
+    alignas(4) float specular_ior_level;
+    alignas(4) float transmission_weight;
+    alignas(4) float geometry_opacity;
+
+    alignas(4) int32_t geometry_opacity_texid;
+    alignas(4) float pad0;
+    alignas(4) float pad1;
+    alignas(4) float pad2;
 };
 
 }

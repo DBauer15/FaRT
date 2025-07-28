@@ -1,5 +1,10 @@
 /* Constants */
-const EPS = 1e-5;
+const MIN_RR_DEPTH: u32 = 3;
+const MAX_BOUNCES: u32 = 5;
+const EPS: f32 = 1e-5;
+const ONE_OVER_PI: f32 = 0.3183098862;
+const PI_OVER_TWO: f32 = 1.5707963268;
+const PI_OVER_FOUR: f32 = 0.7853981634;
 /* Constants */
 
 /* Types */
@@ -29,13 +34,12 @@ struct Ray {
 
 struct OpenPBRMaterial {
     base_color: vec3f,
-/*
+    specular_color: vec3f,
     base_color_texid: i32,
     base_weight: f32,
     base_roughness: f32,
     base_metalness: f32,
 
-    specular_color: vec3f,
     specular_weight: f32,
     specular_roughness: f32,
     specular_anisotropy: f32,
@@ -47,7 +51,10 @@ struct OpenPBRMaterial {
 
     geometry_opacity: f32,
     geometry_opacity_texid: i32,
-*/
+
+    pad0: i32,
+    pad1: i32,
+    pad2: i32,
 };
 
 struct SurfaceInteraction {
@@ -140,6 +147,58 @@ fn next_random3f(rng: ptr<function,RNG>) -> vec3f {
     return vec3f(next_randomf(rng), next_randomf(rng), next_randomf(rng));
 }
 /* Random */
+
+/* Sampling */ 
+fn reorient(dir: vec3f, normal: vec3f) -> vec3f {
+    var sign: f32 = 1.f;
+    if (normal.z < 0.f) {
+        sign = -1.f;
+    }
+    let a: f32 = -1.f / (sign + normal.z);
+    let b: f32 = normal.x * normal.y * a;
+
+    let tangent: vec3f = vec3f(
+        1.f + sign * normal.x * normal.x * a,
+        sign * b,
+        -sign * normal.x
+    );
+    let bitangent: vec3f = vec3f(
+        b,
+        sign + normal.y * normal.y *  a,
+        -normal.y
+    );
+
+    return dir.x * tangent + dir.y * bitangent + dir.z * normal;
+}
+
+fn randomDiskPoint(rand: vec2f) -> vec2f {
+    let u_offset: vec2f = 2.f * rand.xy - vec2f(1.f);
+    if (u_offset.x == 0.f && u_offset.y == 0.f) {
+        return vec2f(0.f);
+    }
+
+    var theta: f32;
+    var r: f32;
+
+    if (abs(u_offset.x) > abs(u_offset.y)) {
+        r = u_offset.x;
+        theta = PI_OVER_FOUR * (u_offset.y / u_offset.x);
+    } else {
+        r = u_offset.y;
+        theta = PI_OVER_TWO - PI_OVER_FOUR * (u_offset.x / u_offset.y);
+    }
+
+    return r * vec2f(cos(theta), sin(theta));
+}
+
+fn randomCosineHemispherePoint(rand: vec2f, n: vec3f) -> vec3f {
+    let p: vec2f = randomDiskPoint(rand);
+    let z: f32 = sqrt(max(0.f, 1.f - p.x*p.x - p.y*p.y));
+    let dir: vec3f = vec3f(p, z);
+
+    return reorient(dir, n);
+}
+/* Sampling */ 
 
 /* Intersect */
 fn getNormal(first_index: u32, bary: vec3f) -> vec3f {
@@ -289,12 +348,81 @@ fn intersectBLAS(ray: ptr<function,Ray>, si: ptr<function,SurfaceInteraction>, b
 
 fn intersect(ray: ptr<function,Ray>) -> SurfaceInteraction {
     var si: SurfaceInteraction;
+    si.valid = false;
 
     intersectBLAS(ray, &si, 0u);
 
+    si.p = (*ray).o + (*ray).d * (*ray).t;
+    si.w_o = -(*ray).d;
     return si;
 }
 /* Intersect */
+
+/* Material */ 
+fn pdf_lambert(si: SurfaceInteraction,
+                  w_i: vec3f,
+                  w_o: vec3f) -> f32
+{
+    let theta_i: f32 = dot(si.n, w_i);
+    if (theta_i < 0.f) {
+        return 0.f;
+    }
+    return theta_i * ONE_OVER_PI;
+}
+
+fn sample_lambert(si: SurfaceInteraction,
+                  rng: ptr<function,RNG>) -> vec3f
+{
+    let w: vec3f = randomCosineHemispherePoint(next_random2f(rng), si.n);
+    return w;
+}
+
+fn bsdf_pdf(si: SurfaceInteraction,
+            w_i: vec3f,
+            w_o: vec3f) -> f32
+{
+    /* TODO: Implement glossy pdf */
+    let diffuse: f32 = pdf_lambert(si, w_i, w_o);
+
+    return diffuse;
+}
+
+fn bsdf_sample(si: SurfaceInteraction, 
+               pdf: ptr<function,f32>,
+               rng: ptr<function,RNG>) -> vec3f
+{
+    var w: vec3f;
+
+    /* TODO: Implement other BRDF components */
+    w = sample_lambert(si, rng);
+
+    *pdf = bsdf_pdf(si, w, si.w_o);
+    return w;
+}
+
+fn eval_diffuse(si: SurfaceInteraction,
+                w_i: vec3f,
+                w_o: vec3f) -> vec3f
+{
+    var f: vec3f = si.material.base_color;
+    /* TODO: sample texture if available */
+
+    //f *= si.material.base_weight * dot(w_i, si.n) * ONE_OVER_PI;
+    f *= dot(w_i, si.n) * ONE_OVER_PI;
+    return f;
+}
+
+fn bsdf_eval(si: SurfaceInteraction,
+             w_i: vec3f,
+             w_o: vec3f,
+             rng: ptr<function,RNG>) -> vec3f
+{
+    let diffuse = eval_diffuse(si, w_i, w_o);
+
+    return diffuse;
+}
+
+/* Material */
 
 /* Pathtracer */
 fn miss(ray: Ray) -> vec4f {
@@ -304,13 +432,48 @@ fn miss(ray: Ray) -> vec4f {
     return background;
 }
 
-fn closestHit(si: SurfaceInteraction) -> vec4f {
-    let ambient = si.material.base_color * 0.1;
-    let diffuse = dot(vec3f(0, 1, 0), si.n) * si.material.base_color;
-    let color = vec4f(ambient + diffuse, 1.0);
-    // let color = vec4f(1, 0, 0, 1);
+fn closestHit(uniforms: Uniforms, hit: SurfaceInteraction, rng: ptr<function,RNG>) -> vec4f {
+    var si = hit;
+    var L = vec3f(0.f);
+    var throughput = vec3f(1.f);
 
-    return color;
+    var f: vec3f;
+    var f_pdf: f32;
+    /* TODO: Pass MAX_BOUNCES const */
+    for (var i: u32 = 0; i < MAX_BOUNCES; i = i + 1) {
+        si.w_i = bsdf_sample(si, &f_pdf, rng);
+        if (f_pdf <= 0.f) {
+            break;
+        }
+        f = bsdf_eval(si, si.w_i, si.w_o, rng);
+        throughput = f * throughput / f_pdf;
+
+        var ray: Ray;
+        ray.o = si.p + 0.00001f * uniforms.scene_scale * si.n;
+        ray.d = si.w_i;
+        ray.rD = 1.f / si.w_i;
+        ray.t = 1e30f;
+
+        si = intersect(&ray);
+
+        // Ray left the scene, apply miss shader
+        if (!si.valid) {
+            L = throughput * miss(ray).xyz;
+            break;
+        }
+
+        // Russian roulette termination
+        if (i > MIN_RR_DEPTH) {
+            let q: f32 = max(throughput.x, max(throughput.y, throughput.z));
+            if (next_randomf(rng) > q) {
+                break;
+            } else {
+                throughput = throughput / (1 - q);
+            }
+        }
+    }
+
+    return vec4f(L, 1.f);
 }
 
 fn spawnRay(uniforms: Uniforms, d: vec2f) -> Ray {
@@ -338,7 +501,7 @@ fn pathtracer(@builtin(global_invocation_id) id: vec3<u32>) {
 
     let si = intersect(&ray);
     if (si.valid) {
-        L = closestHit(si);
+        L = closestHit(uniforms, si, &rng);
     } else {
         L = miss(ray);
     }

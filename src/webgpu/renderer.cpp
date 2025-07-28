@@ -191,6 +191,7 @@ WebGPURenderer::initBufferData() {
         material.base_color.x = m_scene->getMaterials()[i].base_color.x;
         material.base_color.y = m_scene->getMaterials()[i].base_color.y;
         material.base_color.z = m_scene->getMaterials()[i].base_color.z;
+        material.base_weight = m_scene->getMaterials()[i].base_weight;
         materials.push_back(material);
     }
     m_materials_buffer->setData(m_device, m_queue, materials);
@@ -210,7 +211,7 @@ WebGPURenderer::render(const glm::vec3 eye, const glm::vec3 dir, const glm::vec3
 
     // Update uniforms
     m_uniforms.frame_number = m_frame_no;
-    m_uniforms.scene_scale = 1.f; /* TODO */
+    m_uniforms.scene_scale = m_scene->getSceneScale();
     m_uniforms.aspect_ratio = ((float)m_window->getWidth() / m_window->getHeight());
     m_uniforms.eye = glm::vec4(eye, 0);
     m_uniforms.dir = glm::vec4(dir, 0);
@@ -479,6 +480,7 @@ WebGPURenderer::resize(WGPUSurface surface, WGPUAdapter adapter, WGPUDevice devi
     wgpuSurfaceConfigure(surface, &config);
 
     // resize textures
+    /* TODO: Binding indices here are wrong */
     if (!m_accum_texture0 || !m_accum_texture1) {
         return;
     }
