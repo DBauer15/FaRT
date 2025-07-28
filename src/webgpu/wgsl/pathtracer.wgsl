@@ -302,7 +302,7 @@ fn intersectAABB(ray: ptr<function,Ray>, bmin: vec3f, bmax: vec3f) -> f32 {
 
 fn intersectBLAS(ray: ptr<function,Ray>, si: ptr<function,SurfaceInteraction>, bvh_offset: u32) {
     /* TODO: Increasing this results in no image */
-    var stack = array<u32, 16>();
+    var stack = array<u32, 32>();
     var current: i32 = 0;
     stack[current] = bvh_offset;
 
@@ -341,7 +341,7 @@ fn intersectBLAS(ray: ptr<function,Ray>, si: ptr<function,SurfaceInteraction>, b
             }
         }
 
-        if (current < 0 || current >= 15) {
+        if (current < 0 || current >= 31) {
             return;
         }
     }
