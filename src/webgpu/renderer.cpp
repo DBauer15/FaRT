@@ -141,7 +141,8 @@ WebGPURenderer::initPipeline() {
     m_pathtracing_pipeline->setBufferBinding(*m_indices_buffer, 2, WGPUBufferBindingType_ReadOnlyStorage, WGPUShaderStage_Compute);
     m_pathtracing_pipeline->setBufferBinding(*m_materials_buffer, 3, WGPUBufferBindingType_ReadOnlyStorage, WGPUShaderStage_Compute);
     m_pathtracing_pipeline->setBufferBinding(*m_bvh_buffer, 4, WGPUBufferBindingType_ReadOnlyStorage, WGPUShaderStage_Compute);
-    m_pathtracing_pipeline->setStorageTextureBinding(*m_accum_texture1, 5, WGPUStorageTextureAccess_WriteOnly, WGPUShaderStage_Compute);
+    m_pathtracing_pipeline->setStorageTextureBinding(*m_accum_texture0, 5, WGPUStorageTextureAccess_WriteOnly, WGPUShaderStage_Compute);
+    m_pathtracing_pipeline->setTextureBinding(*m_accum_texture1, 6, WGPUTextureSampleType_UnfilterableFloat, WGPUShaderStage_Compute);
     m_pathtracing_pipeline->setShader(*m_pathtracing_shader, "pathtracer");
     m_pathtracing_pipeline->commit(m_device);
 
@@ -153,7 +154,8 @@ WebGPURenderer::initPipeline() {
     m_postprocessing_pipeline->setFragmentShader(*m_postprocessing_shader, "fs_main");
     m_postprocessing_pipeline->setVertexAttribute(0, 0, WGPUVertexFormat_Float32x2, 0L);
     m_postprocessing_pipeline->setVertexBuffer(*m_fullscreen_quad_buffer, 2);
-    m_postprocessing_pipeline->setTextureBinding(*m_accum_texture1, 0, WGPUTextureSampleType_Float, WGPUShaderStage_Fragment);
+    m_postprocessing_pipeline->setTextureBinding(*m_accum_texture0, 0, WGPUTextureSampleType_Float, WGPUShaderStage_Fragment);
+    m_postprocessing_pipeline->setStorageTextureBinding(*m_accum_texture1, 1, WGPUStorageTextureAccess_WriteOnly, WGPUShaderStage_Fragment);
     m_postprocessing_pipeline->commit(m_device);
 
     /* we need this since we createa a texture from the surface without invalidating it */
@@ -208,6 +210,11 @@ WebGPURenderer::render(const glm::vec3 eye, const glm::vec3 dir, const glm::vec3
 
     // Resize framebuffer if needed
     resize(m_surface, m_adapter, m_device, m_window->getWidth(), m_window->getHeight());
+
+    // Clear framebuffer if needed
+    if (shouldClear(eye, dir, up)) {
+        m_frame_no = 0;
+    }
 
     // Update uniforms
     m_uniforms.frame_number = m_frame_no;
@@ -311,6 +318,19 @@ WebGPURenderer::renderpassPostprocess(WGPUCommandEncoder command_encoder) {
 	wgpuRenderPassEncoderRelease(renderpass_encoder);
 }
 
+bool
+WebGPURenderer::shouldClear(const glm::vec3& eye, const glm::vec3& dir, const glm::vec3& up) {
+    bool clear = glm::any(glm::epsilonNotEqual(eye, m_prev_eye, 0.00001f)) ||
+                 glm::any(glm::epsilonNotEqual(dir, m_prev_dir, 0.00001f)) ||
+                 glm::any(glm::epsilonNotEqual(up, m_prev_up, 0.00001f));
+
+    m_prev_eye = eye;
+    m_prev_dir = dir;
+    m_prev_up = up;
+
+    return clear;
+}
+
 
 /* From: https://eliemichel.github.io/LearnWebGPU/getting-started/adapter-and-device/the-adapter.html */
 WGPUAdapter 
@@ -397,7 +417,7 @@ WebGPURenderer::requestDeviceSync(WGPUAdapter adapter)
 	required_limits.limits.maxComputeInvocationsPerWorkgroup = 1024;
 	required_limits.limits.maxComputeWorkgroupsPerDimension = 192;
     required_limits.limits.maxStorageBufferBindingSize = 500000000 * sizeof(Vertex);
-    required_limits.limits.maxBindingsPerBindGroup = 5;
+    required_limits.limits.maxBindingsPerBindGroup = 6;
     required_limits.limits.maxStorageBuffersPerShaderStage = 5;
 
     WGPUDeviceDescriptor descriptor = {};
@@ -480,15 +500,15 @@ WebGPURenderer::resize(WGPUSurface surface, WGPUAdapter adapter, WGPUDevice devi
     wgpuSurfaceConfigure(surface, &config);
 
     // resize textures
-    /* TODO: Binding indices here are wrong */
     if (!m_accum_texture0 || !m_accum_texture1) {
         return;
     }
     m_accum_texture0->resize(m_device, width, height);
     m_accum_texture1->resize(m_device, width, height);
-    m_pathtracing_pipeline->setStorageTextureBinding(*m_accum_texture0, 2, WGPUStorageTextureAccess_ReadOnly,WGPUShaderStage_Compute);
-    m_pathtracing_pipeline->setStorageTextureBinding(*m_accum_texture1, 3, WGPUStorageTextureAccess_WriteOnly, WGPUShaderStage_Compute);
+    m_pathtracing_pipeline->setStorageTextureBinding(*m_accum_texture0, 5, WGPUStorageTextureAccess_WriteOnly,WGPUShaderStage_Compute);
+    m_pathtracing_pipeline->setTextureBinding(*m_accum_texture1, 6, WGPUTextureSampleType_UnfilterableFloat, WGPUShaderStage_Compute);
     m_postprocessing_pipeline->setTextureBinding(*m_accum_texture1, 0, WGPUTextureSampleType_Float, WGPUShaderStage_Fragment);
+    m_postprocessing_pipeline->setStorageTextureBinding(*m_accum_texture0, 1, WGPUStorageTextureAccess_WriteOnly, WGPUShaderStage_Fragment);
 
     m_pathtracing_pipeline->commit(m_device);
     m_postprocessing_pipeline->commit(m_device);

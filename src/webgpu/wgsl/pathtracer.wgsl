@@ -86,7 +86,8 @@ struct RNG {
 @group(0) @binding(2) var<storage,read> indices: array<u32>;
 @group(0) @binding(3) var<storage,read> materials: array<OpenPBRMaterial>;
 @group(0) @binding(4) var<storage,read> bvh: array<BVHNode>;
-@group(0) @binding(5) var dst_texture: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(5) var dst_texture: texture_storage_2d<rgba16float,write>;
+@group(0) @binding(6) var src_texture: texture_2d<f32>;
 
 /* Data */
 
@@ -490,6 +491,7 @@ fn spawnRay(uniforms: Uniforms, d: vec2f) -> Ray {
 
 @compute @workgroup_size(16, 16)
 fn pathtracer(@builtin(global_invocation_id) id: vec3<u32>) {
+    // Compute parameters
     let pixel_id = u32(id.y * uniforms.viewport_size.x + id.x);
     var rng = make_random(pixel_id, uniforms.frame_number);
 
@@ -497,6 +499,8 @@ fn pathtracer(@builtin(global_invocation_id) id: vec3<u32>) {
     let uv = vec2f(f32(id.x) / f32(uniforms.viewport_size.x),
                    1.0 - (f32(id.y) / f32(uniforms.viewport_size.y)));
     let d = uv + (next_random2f(&rng) / vec2f(uniforms.viewport_size.xy));
+
+    // Spawn and trace camera ray
     var ray = spawnRay(uniforms, d);
 
     let si = intersect(&ray);
@@ -506,6 +510,9 @@ fn pathtracer(@builtin(global_invocation_id) id: vec3<u32>) {
         L = miss(ray);
     }
 
+    // Accumulate
+    L = clamp(L, vec4f(vec3f(0), 1), vec4f(vec3f(10), 1));
+    L = (f32(uniforms.frame_number) * textureLoad(src_texture, id.xy, 0) + L) / (f32(uniforms.frame_number) + 1.f);
     textureStore(dst_texture, id.xy, L);
 }
 /* Pathtracer */

@@ -46,7 +46,7 @@ Pipeline::setStorageTextureBinding(const Texture &texture, uint32_t binding, WGP
     WGPUBindGroupLayoutEntry layout_entry = {};
     layout_entry.binding = binding;
     layout_entry.visibility = visibility;
-    layout_entry.storageTexture.access = WGPUStorageTextureAccess_WriteOnly;
+    layout_entry.storageTexture.access = access;
     layout_entry.storageTexture.format = texture.getFormat();
     layout_entry.storageTexture.viewDimension = texture.getViewDimension();
 

@@ -8,6 +8,7 @@ struct VSOut {
 };
 
 @group(0) @binding(0) var src_texture: texture_2d<f32>;
+@group(0) @binding(1) var dst_texture: texture_storage_2d<rgba16float,write>;
 
 @vertex
 fn vs_main(in: VSIn) -> VSOut {
@@ -19,6 +20,10 @@ fn vs_main(in: VSIn) -> VSOut {
 
 @fragment
 fn fs_main(in: VSOut) -> @location(0) vec4f {
-	return textureLoad(src_texture, vec2i(in.position.xy), 0);
-	// return vec4f(in.uv, 0.0, 1.0);
+    let L: vec4f = textureLoad(src_texture, vec2i(in.position.xy), 0);
+
+    textureStore(dst_texture, vec2i(in.position.xy), L);
+
+    /* TODO: tonemap */
+    return L;
 }

@@ -70,6 +70,11 @@ struct WebGPURenderer : Renderer {
                                         m_bvh_buffer      { nullptr };
         std::unique_ptr<Buffer<float>>  m_fullscreen_quad_buffer { nullptr };
 
+        // Helper variables to track view state
+        glm::vec3 m_prev_eye;
+        glm::vec3 m_prev_dir;
+        glm::vec3 m_prev_up;
+
         // Private helper functions
         void initWebGPU();
         void initAccelerationStructures();
@@ -79,6 +84,7 @@ struct WebGPURenderer : Renderer {
         void initBufferData();
         void renderpassPathtracer(WGPUCommandEncoder command_encoder);
         void renderpassPostprocess(WGPUCommandEncoder command_encoder);
+        bool shouldClear(const glm::vec3& eye, const glm::vec3& dir, const glm::vec3& up);
 
 };
 
