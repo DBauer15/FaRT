@@ -151,21 +151,21 @@ fn next_random3f(rng: ptr<function,RNG>) -> vec3f {
 
 /* Sampling */ 
 fn reorient(dir: vec3f, normal: vec3f) -> vec3f {
-    var sign: f32 = 1.f;
+    var sgn: f32 = 1.f;
     if (normal.z < 0.f) {
-        sign = -1.f;
+        sgn = -1.f;
     }
-    let a: f32 = -1.f / (sign + normal.z);
+    let a: f32 = -1.f / (sgn + normal.z);
     let b: f32 = normal.x * normal.y * a;
 
     let tangent: vec3f = vec3f(
-        1.f + sign * normal.x * normal.x * a,
-        sign * b,
-        -sign * normal.x
+        1.f + sgn * normal.x * normal.x * a,
+        sgn * b,
+        -sgn * normal.x
     );
     let bitangent: vec3f = vec3f(
         b,
-        sign + normal.y * normal.y *  a,
+        sgn + normal.y * normal.y *  a,
         -normal.y
     );
 
@@ -360,25 +360,25 @@ fn intersect(ray: ptr<function,Ray>) -> SurfaceInteraction {
 /* Intersect */
 
 /* Material */ 
-fn pdf_lambert(si: SurfaceInteraction,
+fn pdf_lambert(si: ptr<function,SurfaceInteraction>,
                   w_i: vec3f,
                   w_o: vec3f) -> f32
 {
-    let theta_i: f32 = dot(si.n, w_i);
+    let theta_i: f32 = dot((*si).n, w_i);
     if (theta_i < 0.f) {
         return 0.f;
     }
     return theta_i * ONE_OVER_PI;
 }
 
-fn sample_lambert(si: SurfaceInteraction,
+fn sample_lambert(si: ptr<function,SurfaceInteraction>,
                   rng: ptr<function,RNG>) -> vec3f
 {
-    let w: vec3f = randomCosineHemispherePoint(next_random2f(rng), si.n);
+    let w: vec3f = randomCosineHemispherePoint(next_random2f(rng), (*si).n);
     return w;
 }
 
-fn bsdf_pdf(si: SurfaceInteraction,
+fn bsdf_pdf(si: ptr<function,SurfaceInteraction>,
             w_i: vec3f,
             w_o: vec3f) -> f32
 {
@@ -388,7 +388,7 @@ fn bsdf_pdf(si: SurfaceInteraction,
     return diffuse;
 }
 
-fn bsdf_sample(si: SurfaceInteraction, 
+fn bsdf_sample(si: ptr<function,SurfaceInteraction>,
                pdf: ptr<function,f32>,
                rng: ptr<function,RNG>) -> vec3f
 {
@@ -397,23 +397,23 @@ fn bsdf_sample(si: SurfaceInteraction,
     /* TODO: Implement other BRDF components */
     w = sample_lambert(si, rng);
 
-    *pdf = bsdf_pdf(si, w, si.w_o);
+    *pdf = bsdf_pdf(si, w, (*si).w_o);
     return w;
 }
 
-fn eval_diffuse(si: SurfaceInteraction,
+fn eval_diffuse(si: ptr<function,SurfaceInteraction>,
                 w_i: vec3f,
                 w_o: vec3f) -> vec3f
 {
-    var f: vec3f = si.material.base_color;
+    var f: vec3f = (*si).material.base_color;
     /* TODO: sample texture if available */
 
     //f *= si.material.base_weight * dot(w_i, si.n) * ONE_OVER_PI;
-    f *= dot(w_i, si.n) * ONE_OVER_PI;
+    f *= dot(w_i, (*si).n) * ONE_OVER_PI;
     return f;
 }
 
-fn bsdf_eval(si: SurfaceInteraction,
+fn bsdf_eval(si: ptr<function,SurfaceInteraction>,
              w_i: vec3f,
              w_o: vec3f,
              rng: ptr<function,RNG>) -> vec3f
@@ -442,11 +442,11 @@ fn closestHit(uniforms: Uniforms, hit: SurfaceInteraction, rng: ptr<function,RNG
     var f_pdf: f32;
     /* TODO: Pass MAX_BOUNCES const */
     for (var i: u32 = 0; i < MAX_BOUNCES; i = i + 1) {
-        si.w_i = bsdf_sample(si, &f_pdf, rng);
+        si.w_i = bsdf_sample(&si, &f_pdf, rng);
         if (f_pdf <= 0.f) {
             break;
         }
-        f = bsdf_eval(si, si.w_i, si.w_o, rng);
+        f = bsdf_eval(&si, si.w_i, si.w_o, rng);
         throughput = f * throughput / f_pdf;
 
         var ray: Ray;
